@@ -12,6 +12,17 @@
     @stack('css')
     @yield('css')
     <link rel="icon" type="image/png" href="{{ asset('eco-e.png') }}">
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="EVOS Plus - Modern Education Virtual Operating System. Empowering teachers with collaborative digital solutions for school management and academic performance tracking.">
+    <meta name="keywords" content="EVOS, School Management System, Education System, Tanzania Schools, Academic Results Management, Teacher Collaboration">
+    <meta name="author" content="Angelina - EVOS">
+    <meta property="og:title" content="EVOS Plus - Smart Education Management">
+    <meta property="og:description" content="Empowering teachers with collaborative digital solutions for school management.">
+    <meta property="og:image" content="{{ asset('eco-e.png') }}">
+    <meta property="og:url" content="{{ url('/') }}">
+    <meta name="twitter:card" content="summary_large_image">
+    
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -281,12 +292,12 @@
             </h4>
             <div class="video-container">
                 <video id="introVideo" controls poster="{{ asset('eco-e.png') }}">
-                    <source src="{{ asset('evos.mp4') }}" type="video/mp4">
+                    <source src="{{ asset('avios.mp4') }}" type="video/mp4">
                     Your browser does not support the video tag.
                 </video>
             </div>
             <div class="text-center">
-                <a href="{{ asset('evos.mp4') }}" download class="btn btn-outline-success btn-sm">
+                <a href="{{ asset('avios.mp4') }}" download class="btn btn-outline-success btn-sm">
                     <i class="fas fa-download mr-1"></i> Pakua Video ya Maelekezo
                 </a>
                 <p class="text-muted small mt-3">

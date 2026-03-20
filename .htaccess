@@ -1,4 +1,12 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    
+    # Redirect to HTTPS if needed (uncomment if SSL is active)
+    # RewriteCond %{HTTPS} off
+    # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # Handle Sitemap
+    RewriteRule ^sitemap\.xml$ public/index.php [L]
+
     RewriteRule ^(.*)$ public/$1 [L]
 </IfModule>

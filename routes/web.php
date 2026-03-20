@@ -14,6 +14,10 @@ Route::get('/api/districts/{region}', function ($regionId) {
     return \App\Models\District::where('region_id', $regionId)->get();
 });
 
+Route::get('/sitemap.xml', function () {
+    return response()->view('sitemap')->header('Content-Type', 'text/xml');
+});
+
 Auth::routes();
 
 Route::middleware('auth')->group(function () {
