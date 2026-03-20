@@ -20,6 +20,11 @@ Route::get('/sitemap.xml', function () {
 
 Auth::routes();
 
+Route::get('/logout', function () {
+    Auth::logout();
+    return redirect('/auth');
+})->name('logout.get');
+
 Route::middleware('auth')->group(function () {
     Route::resource('schools', App\Http\Controllers\SchoolController::class);
 
