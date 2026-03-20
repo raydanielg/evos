@@ -17,11 +17,34 @@
     <meta name="description" content="EVOS Plus - Modern Education Virtual Operating System. Empowering teachers with collaborative digital solutions for school management and academic performance tracking.">
     <meta name="keywords" content="EVOS, School Management System, Education System, Tanzania Schools, Academic Results Management, Teacher Collaboration">
     <meta name="author" content="Angelina - EVOS">
-    <meta property="og:title" content="EVOS Plus - Smart Education Management">
-    <meta property="og:description" content="Empowering teachers with collaborative digital solutions for school management.">
-    <meta property="og:image" content="{{ asset('eco-e.png') }}">
+    
+    <!-- Open Graph / Facebook / WhatsApp -->
+    <meta property="og:type" content="website">
     <meta property="og:url" content="{{ url('/') }}">
-    <meta name="twitter:card" content="summary_large_image">
+    <meta property="og:title" content="EVOS Plus - Smart Education Management">
+    <meta property="og:description" content="Empowering teachers with collaborative digital solutions for school management. Tazama video ya maelekezo hapa.">
+    <meta property="og:image" content="{{ asset('eco-e.png') }}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+
+    <!-- Video Meta Tags for WhatsApp/Social Media -->
+    <meta property="og:video" content="{{ asset('avios.mp4') }}">
+    <meta property="og:video:secure_url" content="{{ asset('avios.mp4') }}">
+    <meta property="og:video:type" content="video/mp4">
+    <meta property="og:video:width" content="1280">
+    <meta property="og:video:height" content="720">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="player">
+    <meta name="twitter:title" content="EVOS Plus - Smart Education Management">
+    <meta name="twitter:description" content="Empowering teachers with collaborative digital solutions for school management.">
+    <meta name="twitter:image" content="{{ asset('eco-e.png') }}">
+    <meta name="twitter:player" content="{{ url('/') }}">
+    <meta name="twitter:player:width" content="1280">
+    <meta name="twitter:player:height" content="720">
+    <meta name="twitter:player:stream" content="{{ asset('avios.mp4') }}">
+    <meta name="twitter:player:stream:content_type" content="video/mp4">
     
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
