@@ -11,14 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasColumn('users', 'phone')) {
-            Schema::table('users', function (Blueprint $table) {
-                $table->string('phone')->nullable()->unique()->after('email');
-            });
-        }
-        
         Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('region_id')->nullable()->after('phone')->constrained()->onDelete('set null');
+            $table->foreignId('region_id')->nullable()->after('password')->constrained()->onDelete('set null');
             $table->foreignId('district_id')->nullable()->after('region_id')->constrained()->onDelete('set null');
         });
     }
