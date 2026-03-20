@@ -273,19 +273,19 @@
     </div>
 
     <!-- Video Integration -->
-    <div class="video-section">
+    <div class="video-section" id="videoSection">
         <div class="video-card">
             <h4 class="text-center mb-4" style="color: #064e3b; font-weight: 700;">
                 <i class="fas fa-play-circle mr-2"></i> Maelekezo ya Mfumo
             </h4>
             <div class="video-container">
                 <video id="introVideo" controls poster="{{ asset('eco-e.png') }}">
-                    <source src="{{ asset('videos/intro.mp4') }}" type="video/mp4">
+                    <source src="{{ asset('evos.mp4') }}" type="video/mp4">
                     Your browser does not support the video tag.
                 </video>
             </div>
             <div class="text-center">
-                <a href="{{ asset('videos/intro.mp4') }}" download class="btn btn-outline-success btn-sm">
+                <a href="{{ asset('evos.mp4') }}" download class="btn btn-outline-success btn-sm">
                     <i class="fas fa-download mr-1"></i> Pakua Video ya Maelekezo
                 </a>
                 <p class="text-muted small mt-3">
@@ -303,4 +303,20 @@
 @section('adminlte_js')
     @stack('js')
     @yield('js')
+    <script>
+        function playSystemVideo() {
+            const videoSection = document.getElementById('videoSection');
+            const video = document.getElementById('introVideo');
+            
+            // Scroll to video section smoothly
+            videoSection.scrollIntoView({ behavior: 'smooth' });
+            
+            // Wait for scroll to finish then play
+            setTimeout(() => {
+                video.play();
+                // Optional: Request full screen
+                // if (video.requestFullscreen) video.requestFullscreen();
+            }, 800);
+        }
+    </script>
 @stop
