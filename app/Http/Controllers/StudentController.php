@@ -169,92 +169,75 @@ class StudentController extends Controller
             $rows = [];
         }
 
+        if (empty($rows)) {
+            return response()->json(['success' => false, 'message' => 'No data to import.'], 422);
+        }
+
         $errors = [];
-        $normalizedRows = [];
-        foreach (array_values($rows) as $idx => $r) {
-            if (!is_array($r)) {
-                $errors[] = 'Row ' . ($idx + 1) . ': Invalid format';
-                $normalizedRows[] = [
-                    'first_name' => null,
-                    'middle_name' => null,
-                    'last_name' => null,
-                    'sex' => null,
-                    'parent_phone' => null,
-                    '_error' => 'Invalid format',
+        $count = 0;
+
+        DB::transaction(function () use ($school, $schoolClass, $rows, &$count) {
+            foreach ($rows as $r) {
+                $normalized = [
+                    'first_name' => isset($r['first_name']) ? trim((string) $r['first_name']) : null,
+                    'middle_name' => isset($r['middle_name']) ? trim((string) $r['middle_name']) : null,
+                    'last_name' => isset($r['last_name']) ? trim((string) $r['last_name']) : null,
+                    'sex' => isset($r['sex']) ? trim((string) $r['sex']) : null,
+                    'parent_phone' => isset($r['parent_phone']) ? trim((string) $r['parent_phone']) : null,
                 ];
-                continue;
-            }
 
-            $normalized = [
-                'first_name' => isset($r['first_name']) ? trim((string) $r['first_name']) : null,
-                'middle_name' => isset($r['middle_name']) ? trim((string) $r['middle_name']) : null,
-                'last_name' => isset($r['last_name']) ? trim((string) $r['last_name']) : null,
-                'sex' => isset($r['sex']) ? trim((string) $r['sex']) : null,
-                'parent_phone' => isset($r['parent_phone']) ? trim((string) $r['parent_phone']) : null,
-            ];
+                $v = Validator::make($normalized, [
+                    'first_name' => 'required|string|max:100',
+                    'middle_name' => 'nullable|string|max:100',
+                    'last_name' => 'required|string|max:100',
+                    'sex' => 'required|in:Male,Female',
+                    'parent_phone' => 'nullable|string|max:30',
+                ]);
 
-            $v = Validator::make($normalized, [
-                'first_name' => 'required|string|max:100',
-                'middle_name' => 'nullable|string|max:100',
-                'last_name' => 'required|string|max:100',
-                'sex' => 'required|in:Male,Female',
-                'parent_phone' => 'nullable|string|max:30',
-            ]);
+                if ($v->fails()) {
+                    continue;
+                }
 
-            if ($v->fails()) {
-                $msg = implode(' | ', $v->errors()->all());
-                $errors[] = 'Row ' . ($idx + 1) . ': ' . $msg;
-                $normalizedRows[] = [
-                    'first_name' => $normalized['first_name'],
-                    'middle_name' => $normalized['middle_name'] !== '' ? (string) $normalized['middle_name'] : null,
-                    'last_name' => $normalized['last_name'],
-                    'sex' => $normalized['sex'],
-                    'parent_phone' => $normalized['parent_phone'],
-                    '_error' => $msg,
-                ];
-                continue;
-            }
+                // Check for duplicate in the same school and class
+                $exists = Student::where('school_id', (int) $school->id)
+                    ->where('class_id', (int) $schoolClass->id)
+                    ->where('first_name', $normalized['first_name'])
+                    ->where('last_name', $normalized['last_name'])
+                    ->where(function ($q) use ($normalized) {
+                        if ($normalized['middle_name']) {
+                            $q->where('middle_name', $normalized['middle_name']);
+                        } else {
+                            $q->whereNull('middle_name');
+                        }
+                    })
+                    ->exists();
 
-            $normalizedRows[] = [
-                'first_name' => (string) $normalized['first_name'],
-                'middle_name' => $normalized['middle_name'] !== '' ? (string) $normalized['middle_name'] : null,
-                'last_name' => (string) $normalized['last_name'],
-                'sex' => (string) $normalized['sex'],
-                'parent_phone' => (string) $normalized['parent_phone'],
-                '_error' => null,
-            ];
-        }
+                if ($exists) {
+                    continue;
+                }
 
-        if (!empty($errors)) {
-            return view('students.import_preview', [
-                'school' => $school,
-                'schoolClass' => $schoolClass,
-                'rows' => $normalizedRows,
-                'errors' => $errors,
-            ]);
-        }
-
-        DB::transaction(function () use ($school, $schoolClass, $normalizedRows) {
-            foreach ($normalizedRows as $r) {
                 Student::create([
                     'school_id' => (int) $school->id,
                     'class_id' => (int) $schoolClass->id,
                     'reg_seq' => null,
                     'registration_number' => null,
-                    'first_name' => $r['first_name'],
-                    'middle_name' => $r['middle_name'] !== '' ? $r['middle_name'] : null,
-                    'last_name' => $r['last_name'],
-                    'sex' => $r['sex'],
+                    'first_name' => $normalized['first_name'],
+                    'middle_name' => $normalized['middle_name'] !== '' ? $normalized['middle_name'] : null,
+                    'last_name' => $normalized['last_name'],
+                    'sex' => $normalized['sex'],
                     'class' => $schoolClass->name,
-                    'parent_phone' => $r['parent_phone'],
+                    'parent_phone' => $normalized['parent_phone'],
                     'photo_path' => null,
                 ]);
+                $count++;
             }
         });
 
-        session()->forget('students_import_payload');
-
-        return redirect()->route('students.index')->with('success', 'Students imported successfully.');
+        return response()->json([
+            'success' => true,
+            'message' => "Successfully imported {$count} students.",
+            'count' => $count
+        ]);
     }
 
     public function bulkDelete(Request $request)
@@ -273,6 +256,13 @@ class StudentController extends Controller
                 ->get();
 
             foreach ($students as $student) {
+                // Remove related marks
+                $student->marks()->delete();
+                // Remove related exam participants
+                $student->participants()->delete();
+                // Remove related exam results
+                $student->examResults()->delete();
+                
                 if ($student->photo_path) {
                     Storage::disk('public')->delete($student->photo_path);
                 }
@@ -842,11 +832,20 @@ class StudentController extends Controller
     {
         $this->ensureStudentBelongsToUser($student);
 
-        if ($student->photo_path) {
-            Storage::disk('public')->delete($student->photo_path);
-        }
+        DB::transaction(function () use ($student) {
+            // Remove related marks
+            $student->marks()->delete();
+            // Remove related exam participants
+            $student->participants()->delete();
+            // Remove related exam results
+            $student->examResults()->delete();
 
-        $student->delete();
+            if ($student->photo_path) {
+                Storage::disk('public')->delete($student->photo_path);
+            }
+
+            $student->delete();
+        });
 
         return redirect()->route('students.index')->with('success', 'Student deleted successfully!');
     }
