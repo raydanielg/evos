@@ -301,10 +301,10 @@
                                                 </td>
                                             @endforeach
                                             <td class="text-center font-weight-bold mark-col-total" style="background-color: #f8f9fa; font-size: 13px;">
-                                                <span class="total-val">{{ $hasAny ? round($total) : '-' }}</span>
+                                                <span class="total-val">{{ $hasAny ? (int)$total : '-' }}</span>
                                             </td>
                                             <td class="text-center mark-col-avg" style="background-color: #f8f9fa; font-size: 13px;">
-                                                <span class="avg-val">{{ $hasAny ? ($isComplete ? round($avg) : 'INC') : '-' }}</span>
+                                                <span class="avg-val">{{ $hasAny ? ($isComplete ? (int)round($avg) : 'INC') : '-' }}</span>
                                             </td>
                                             <td class="text-center mark-col-grade" style="background-color: #f8f9fa;">
                                                 @php
