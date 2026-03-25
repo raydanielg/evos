@@ -54,9 +54,15 @@
                                 <thead class="bg-light">
                                     <tr>
                                         <th style="width: 70px">#</th>
-                                        <th>Index Number</th>
-                                        <th>Full Name</th>
-                                        <th style="width: 120px" class="text-center">Score</th>
+                                        <th style="width: 150px">Index Number</th>
+                                        <th class="mark-col-full-name" style="vertical-align: middle; min-width: 200px;">Full Name</th>
+                                        @if($isMultiSubject)
+                                            @foreach($subjects as $sub)
+                                                <th class="text-center" style="min-width: 80px;">{{ $sub->globalSubject->name }}</th>
+                                            @endforeach
+                                        @else
+                                            <th style="width: 120px" class="text-center">Score</th>
+                                        @endif
                                         <th style="min-width: 200px">Status</th>
                                     </tr>
                                 </thead>
@@ -64,13 +70,26 @@
                                     @foreach($rows as $r)
                                         <tr class="{{ !$r['is_valid'] ? 'table-danger' : '' }}" 
                                             data-student-id="{{ $r['student_id'] }}" 
-                                            data-score="{{ $r['score'] }}">
+                                            @if($isMultiSubject)
+                                                data-marks='@json($r['marks'])'
+                                            @else
+                                                data-score="{{ $r['score'] }}"
+                                            @endif
+                                        >
                                             <td>{{ $loop->iteration }}</td>
                                             <td>{{ $r['index_no'] }}</td>
                                             <td>{{ $r['full_name'] }}</td>
-                                            <td class="text-center">
-                                                <strong>{{ $r['score'] }}</strong>
-                                            </td>
+                                            @if($isMultiSubject)
+                                                @foreach($subjects as $sub)
+                                                    <td class="text-center">
+                                                        <strong>{{ $r['marks'][$sub->id] ?? '-' }}</strong>
+                                                    </td>
+                                                @endforeach
+                                            @else
+                                                <td class="text-center">
+                                                    <strong>{{ $r['score'] }}</strong>
+                                                </td>
+                                            @endif
                                             <td class="row-status">
                                                 @if(!$r['is_valid'])
                                                     <span class="text-danger"><i class="fas fa-times-circle mr-1"></i> {{ $r['error'] }}</span>
@@ -142,10 +161,15 @@
 
                 for (let i = 0; i < total; i += CHUNK_SIZE) {
                     const chunk = rows.slice(i, i + CHUNK_SIZE);
-                    const chunkData = chunk.map(r => ({
-                        student_id: r.student_id,
-                        score: r.score
-                    }));
+                    const chunkData = chunk.map(r => {
+                        let data = { student_id: r.student_id };
+                        if ("{{ $isMultiSubject }}") {
+                            data.marks = $(r._tr).data('marks');
+                        } else {
+                            data.score = $(r._tr).data('score');
+                        }
+                        return data;
+                    });
 
                     try {
                         const response = await $.ajax({
@@ -155,7 +179,7 @@
                                 _token: "{{ csrf_token() }}",
                                 exam_id: "{{ $exam->id }}",
                                 class_id: "{{ $schoolClass->id }}",
-                                subject_id: "{{ $subject->id }}",
+                                subject_id: "{{ $subject ? $subject->id : '' }}",
                                 rows: chunkData
                             }
                         });

@@ -103,34 +103,30 @@
             <div class="col-md-12">
                 <div class="card shadow-sm border-0" style="border-radius: 8px; background-color: #f8f9fa;">
                     <div class="card-body py-2 d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center" style="gap: 15px;">
-                            <div class="text-muted small">
-                                <i class="fas fa-file-excel text-success mr-1"></i>
-                                <strong>Marks Template:</strong>
-                            </div>
-                            @if($subjectId)
-                                <a href="{{ route('marks.template', ['exam_id' => $examId, 'class_id' => $classId, 'subject_id' => $subjectId]) }}" class="btn btn-xs btn-outline-success shadow-sm">
-                                    <i class="fas fa-download mr-1"></i> Download Template ({{ $subjects->firstWhere('id', $subjectId)->globalSubject->name }})
-                                </a>
-                            @else
-                                <span class="text-muted small italic">Select a subject to download its specific template.</span>
-                            @endif
-                        </div>
-                        @if($subjectId)
-                        <form action="{{ route('marks.import-preview') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center" style="gap: 10px;">
-                            @csrf
-                            <input type="hidden" name="exam_id" value="{{ $examId }}">
-                            <input type="hidden" name="class_id" value="{{ $classId }}">
-                            <input type="hidden" name="subject_id" value="{{ $subjectId }}">
-                            <div class="custom-file custom-file-sm" style="width: 200px;">
-                                <input type="file" name="file" class="custom-file-input" id="importFile" accept=".csv" required onchange="$(this).next('.custom-file-label').html(this.files[0].name)">
-                                <label class="custom-file-label small" for="importFile">Upload filled CSV</label>
-                            </div>
-                            <button type="submit" class="btn btn-xs btn-success shadow-sm">
-                                <i class="fas fa-upload mr-1"></i> Import
-                            </button>
-                        </form>
-                        @endif
+                                <div class="d-flex align-items-center" style="gap: 15px;">
+                                    <div class="text-muted small">
+                                        <i class="fas fa-file-excel text-success mr-1"></i>
+                                        <strong>Marks Template:</strong>
+                                    </div>
+                                    <a href="{{ route('marks.template', ['exam_id' => $examId, 'class_id' => $classId, 'subject_id' => $subjectId]) }}" class="btn btn-xs btn-outline-success shadow-sm">
+                                        <i class="fas fa-download mr-1"></i> Download Template {{ $subjectId ? '(' . $subjects->firstWhere('id', $subjectId)->globalSubject->name . ')' : '(All Subjects)' }}
+                                    </a>
+                                </div>
+                                <form action="{{ route('marks.import-preview') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center" style="gap: 10px;">
+                                    @csrf
+                                    <input type="hidden" name="exam_id" value="{{ $examId }}">
+                                    <input type="hidden" name="class_id" value="{{ $classId }}">
+                                    @if($subjectId)
+                                        <input type="hidden" name="subject_id" value="{{ $subjectId }}">
+                                    @endif
+                                    <div class="custom-file custom-file-sm" style="width: 200px;">
+                                        <input type="file" name="file" class="custom-file-input" id="importFile" accept=".csv" required onchange="$(this).next('.custom-file-label').html(this.files[0].name)">
+                                        <label class="custom-file-label small" for="importFile">Upload filled CSV</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-xs btn-success shadow-sm">
+                                        <i class="fas fa-upload mr-1"></i> Import
+                                    </button>
+                                </form>
                     </div>
                 </div>
             </div>

@@ -93,14 +93,13 @@ class MarkController extends Controller
 
         $examId = $request->integer('exam_id');
         $classId = $request->integer('class_id');
-        $subjectId = $request->integer('subject_id');
+        $subjectId = $request->get('subject_id'); // Can be null for "All Subjects"
 
-        abort_unless($examId && $classId && $subjectId, 422, 'Missing required parameters.');
+        abort_unless($examId && $classId, 422, 'Missing required parameters.');
 
         $exam = Exam::findOrFail($examId);
         $schoolClass = SchoolClass::findOrFail($classId);
-        $userSubject = UserSubject::with('globalSubject')->findOrFail($subjectId);
-
+        
         $students = Student::where('school_id', $schoolId)
             ->where('class_id', $classId)
             ->orderByRaw("CASE WHEN sex = 'Female' THEN 0 ELSE 1 END")
@@ -109,20 +108,45 @@ class MarkController extends Controller
             ->orderBy('last_name')
             ->get();
 
-        $filename = "marks_template_{$schoolClass->name}_{$userSubject->globalSubject->name}.csv";
-
-        return response()->streamDownload(function () use ($students) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['Index Number', 'Full Name', 'Score']);
-            foreach ($students as $student) {
-                fputcsv($out, [
-                    $student->registration_number,
-                    $student->full_name,
-                    ''
-                ]);
+        if ($subjectId) {
+            $userSubject = UserSubject::with('globalSubject')->findOrFail($subjectId);
+            $filename = "marks_template_{$schoolClass->name}_{$userSubject->globalSubject->name}.csv";
+            $header = ['Index Number', 'Full Name', 'Score'];
+            
+            return response()->streamDownload(function () use ($students, $header) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, $header);
+                foreach ($students as $student) {
+                    fputcsv($out, [$student->registration_number, $student->full_name, '']);
+                }
+                fclose($out);
+            }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        } else {
+            // All Subjects
+            $subjects = ClassSubject::where('class_id', $classId)
+                ->with('userSubject.globalSubject')
+                ->get()
+                ->pluck('userSubject');
+            
+            $filename = "marks_template_{$schoolClass->name}_All_Subjects.csv";
+            $header = ['Index Number', 'Full Name'];
+            foreach ($subjects as $sub) {
+                $header[] = $sub->globalSubject->name . " ({$sub->id})";
             }
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+
+            return response()->streamDownload(function () use ($students, $header, $subjects) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, $header);
+                foreach ($students as $student) {
+                    $row = [$student->registration_number, $student->full_name];
+                    foreach ($subjects as $sub) {
+                        $row[] = '';
+                    }
+                    fputcsv($out, $row);
+                }
+                fclose($out);
+            }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }
     }
 
     public function importPreview(Request $request)
@@ -130,7 +154,7 @@ class MarkController extends Controller
         $validated = $request->validate([
             'exam_id' => 'required|integer|exists:exams,id',
             'class_id' => 'required|integer|exists:school_classes,id',
-            'subject_id' => 'required|integer|exists:user_subjects,id',
+            'subject_id' => 'nullable|integer|exists:user_subjects,id',
             'file' => 'required|file',
         ]);
 
@@ -140,90 +164,108 @@ class MarkController extends Controller
 
         $header = fgetcsv($handle);
         $rows = [];
-        $errors = [];
+        $isMultiSubject = empty($validated['subject_id']);
+        
+        $subjectMap = [];
+        if ($isMultiSubject) {
+            // Extract subject IDs from header e.g. "Math (12)"
+            foreach ($header as $index => $col) {
+                if (preg_match('/\((\d+)\)$/', $col, $matches)) {
+                    $subjectMap[$index] = $matches[1];
+                }
+            }
+        }
 
-        $rowNo = 1;
         while (($data = fgetcsv($handle)) !== false) {
-            $rowNo++;
             if (empty($data) || (count($data) === 1 && trim((string)$data[0]) === '')) continue;
 
             $indexNo = trim((string)($data[0] ?? ''));
             $fullName = trim((string)($data[1] ?? ''));
-            $score = trim((string)($data[2] ?? ''));
+            
+            $student = Student::where('school_id', $this->getActiveSchoolId())
+                ->where(function($q) use ($indexNo, $fullName, $validated) {
+                    if ($indexNo) $q->where('registration_number', $indexNo);
+                    elseif ($fullName) $q->where('full_name', 'like', $fullName);
+                })
+                ->where('class_id', $validated['class_id'])
+                ->first();
 
-            $student = null;
-            if ($indexNo) {
-                $student = Student::where('school_id', $this->getActiveSchoolId())
-                    ->where('registration_number', $indexNo)
-                    ->first();
-            }
-
-            if (!$student && $fullName) {
-                // Try matching by name if index no fails
-                $students = Student::where('school_id', $this->getActiveSchoolId())
-                    ->where('class_id', $validated['class_id'])
-                    ->get();
-                
-                foreach ($students as $s) {
-                    if (strcasecmp($s->full_name, $fullName) === 0) {
-                        $student = $s;
-                        break;
-                    }
+            if ($isMultiSubject) {
+                $studentMarks = [];
+                foreach ($subjectMap as $colIndex => $subId) {
+                    $score = trim((string)($data[$colIndex] ?? ''));
+                    $studentMarks[$subId] = $score;
                 }
+                
+                $rows[] = [
+                    'student_id' => $student?->id,
+                    'index_no' => $indexNo,
+                    'full_name' => $fullName ?: ($student?->full_name ?? 'Unknown'),
+                    'marks' => $studentMarks,
+                    'is_valid' => $student !== null,
+                    'error' => $student === null ? 'Student not found' : null
+                ];
+            } else {
+                $score = trim((string)($data[2] ?? ''));
+                $rows[] = [
+                    'student_id' => $student?->id,
+                    'index_no' => $indexNo,
+                    'full_name' => $fullName ?: ($student?->full_name ?? 'Unknown'),
+                    'score' => $score,
+                    'is_valid' => $student !== null && is_numeric($score) && $score >= 0 && $score <= 100,
+                    'error' => $student === null ? 'Student not found' : (!is_numeric($score) ? 'Invalid score' : ($score < 0 || $score > 100 ? 'Score out of range' : null))
+                ];
             }
-
-            $rows[] = [
-                'student_id' => $student?->id,
-                'index_no' => $indexNo,
-                'full_name' => $fullName ?: ($student?->full_name ?? 'Unknown'),
-                'score' => $score,
-                'is_valid' => $student !== null && is_numeric($score) && $score >= 0 && $score <= 100,
-                'error' => $student === null ? 'Student not found' : (!is_numeric($score) ? 'Invalid score' : ($score < 0 || $score > 100 ? 'Score out of range' : null))
-            ];
         }
         fclose($handle);
 
         $exam = Exam::findOrFail($validated['exam_id']);
         $schoolClass = SchoolClass::findOrFail($validated['class_id']);
-        $subject = UserSubject::with('globalSubject')->findOrFail($validated['subject_id']);
+        $subject = $validated['subject_id'] ? UserSubject::with('globalSubject')->findOrFail($validated['subject_id']) : null;
+        
+        $subjects = $isMultiSubject ? UserSubject::whereIn('id', array_values($subjectMap))->with('globalSubject')->get() : collect();
 
-        return view('marks.import_preview', compact('rows', 'exam', 'schoolClass', 'subject'));
+        return view('marks.import_preview', compact('rows', 'exam', 'schoolClass', 'subject', 'subjects', 'isMultiSubject'));
     }
 
     public function importConfirm(Request $request)
     {
         $validated = $request->validate([
             'exam_id' => 'required|integer|exists:exams,id',
-            'subject_id' => 'required|integer|exists:user_subjects,id',
             'class_id' => 'required|integer|exists:school_classes,id',
+            'subject_id' => 'nullable|integer|exists:user_subjects,id',
             'rows' => 'required|array',
         ]);
 
         $count = 0;
         DB::transaction(function () use ($validated, &$count) {
             foreach ($validated['rows'] as $r) {
-                if (empty($r['student_id']) || !isset($r['score']) || $r['score'] === '') continue;
+                if (empty($r['student_id'])) continue;
 
-                Mark::updateOrCreate(
-                    [
-                        'exam_id' => $validated['exam_id'],
-                        'student_id' => $r['student_id'],
-                        'user_subject_id' => $validated['subject_id'],
-                    ],
-                    [
-                        'class_id' => $validated['class_id'],
-                        'score' => (int)$r['score'],
-                    ]
-                );
-                $count++;
+                if (isset($r['marks']) && is_array($r['marks'])) {
+                    // Multi-subject
+                    foreach ($r['marks'] as $subId => $score) {
+                        if ($score === null || $score === '') continue;
+                        Mark::updateOrCreate(
+                            ['exam_id' => $validated['exam_id'], 'student_id' => $r['student_id'], 'user_subject_id' => $subId],
+                            ['class_id' => $validated['class_id'], 'score' => (int)$score]
+                        );
+                        $count++;
+                    }
+                } elseif (isset($r['score']) && $validated['subject_id']) {
+                    // Single subject
+                    if ($r['score'] === null || $r['score'] === '') continue;
+                    Mark::updateOrCreate(
+                        ['exam_id' => $validated['exam_id'], 'student_id' => $r['student_id'], 'user_subject_id' => $validated['subject_id']],
+                        ['class_id' => $validated['class_id'], 'score' => (int)$r['score']]
+                    );
+                    $count++;
+                }
             }
+            $this->recalculateResults($validated['exam_id'], $validated['class_id']);
         });
 
-        return response()->json([
-            'success' => true,
-            'message' => "Successfully imported {$count} marks.",
-            'count' => $count
-        ]);
+        return response()->json(['success' => true, 'message' => "Successfully imported marks.", 'count' => $count]);
     }
 
     public function getLiveUpdates(Request $request)
