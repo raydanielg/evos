@@ -45,6 +45,7 @@ Route::middleware('auth')->group(function () {
     Route::get('students-print', [App\Http\Controllers\StudentController::class, 'print'])->name('students.print');
     Route::post('students-assign-numbers', [App\Http\Controllers\StudentController::class, 'assignNumbers'])->name('students.assignNumbers');
     Route::post('students-reassign-numbers', [App\Http\Controllers\StudentController::class, 'reassignNumbers'])->name('students.reassignNumbers');
+    Route::post('students-bulk-delete', [App\Http\Controllers\StudentController::class, 'bulkDelete'])->name('students.bulkDelete');
 
     // Subject Management Routes
     Route::get('subjects-manage', [App\Http\Controllers\SubjectController::class, 'manageMySubjects'])->name('subjects.manage');

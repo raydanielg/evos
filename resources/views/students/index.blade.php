@@ -88,12 +88,16 @@
                         <button type="submit" class="btn btn-secondary" style="border-radius: 4px; height: 38px; white-space: nowrap;" {{ !$classId ? 'disabled' : '' }}>Re-assign Numbers</button>
                     </form>
 
-                    <form method="POST" action="{{ route('students.assignNumbers') }}" id="students-assign-form" onsubmit="return confirm('Assign numbers for this class?');">
+                    <form method="POST" action="{{ route('students.assignNumbers') }}" id="students-assign-form">
                         @csrf
                         <input type="hidden" name="selected_ids" id="students-assign-selected">
                         <input type="hidden" name="class_id" value="{{ $classId }}">
                         <button type="submit" class="btn btn-success" style="border-radius: 4px; height: 38px; white-space: nowrap;" {{ !$classId ? 'disabled' : '' }}>Assign Numbers</button>
                     </form>
+
+                    <button type="button" class="btn btn-danger" id="bulk-delete-btn" style="border-radius: 4px; height: 38px; white-space: nowrap;" disabled>
+                        <i class="fas fa-trash-alt mr-1"></i> Bulk Delete
+                    </button>
                 </div>
             </div>
         </div>
@@ -123,6 +127,29 @@
                     </div>
                 </div>
             @endif
+        </div>
+    </div>
+
+    <!-- Bulk Delete Confirmation Modal -->
+    <div class="modal fade" id="bulkDeleteModal" tabindex="-1" role="dialog" aria-labelledby="bulkDeleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content" style="border-radius: 12px;">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title text-danger" id="bulkDeleteModalLabel">
+                        <i class="fas fa-exclamation-triangle mr-2"></i> Confirm Bulk Delete
+                    </h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete <strong id="bulk-delete-count">0</strong> selected students? This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-dismiss="modal" style="border-radius: 8px;">Cancel</button>
+                    <button type="button" id="confirm-bulk-delete-btn" class="btn btn-danger" style="border-radius: 8px;">Delete Selected</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -223,14 +250,31 @@
                 bindGenerateForms();
 
                 var selectAll = document.getElementById('students-select-all');
+                var rowChecks = document.querySelectorAll('.students-row-check');
+                var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+
+                function updateBulkDeleteState() {
+                    var selected = getSelectedIds();
+                    if (bulkDeleteBtn) {
+                        bulkDeleteBtn.disabled = selected.length === 0;
+                        var countEl = document.getElementById('bulk-delete-count');
+                        if (countEl) countEl.textContent = selected.length;
+                    }
+                }
+
                 if (selectAll) {
                     selectAll.addEventListener('change', function () {
                         var on = selectAll.checked;
                         document.querySelectorAll('.students-row-check').forEach(function (cb) {
                             cb.checked = on;
                         });
+                        updateBulkDeleteState();
                     });
                 }
+
+                rowChecks.forEach(function(cb) {
+                    cb.addEventListener('change', updateBulkDeleteState);
+                });
 
                 document.querySelectorAll('#students-table-wrap .pagination a').forEach(function (a) {
                     a.addEventListener('click', function (e) {
@@ -323,6 +367,48 @@
             var qtForm = $('#quickTransferForm');
             var qtSubmitBtn = $('#qt-submit-btn');
             var qtError = $('#qt-error');
+
+            // Bulk Delete Logic
+            var bulkDeleteModal = $('#bulkDeleteModal');
+            var confirmBulkDeleteBtn = $('#confirm-bulk-delete-btn');
+
+            $(document).on('click', '#bulk-delete-btn', function() {
+                var count = getSelectedIds().length;
+                $('#bulk-delete-count').text(count);
+                bulkDeleteModal.modal('show');
+            });
+
+            confirmBulkDeleteBtn.on('click', function() {
+                var ids = getSelectedIds();
+                if (ids.length === 0) return;
+
+                confirmBulkDeleteBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Deleting...');
+
+                $.ajax({
+                    url: '{{ route("students.bulkDelete") }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        ids: ids.join(',')
+                    },
+                    success: function(data) {
+                        bulkDeleteModal.modal('hide');
+                        confirmBulkDeleteBtn.prop('disabled', false).text('Delete Selected');
+                        fetchUpdate(window.location.href, false);
+                    },
+                    error: function(xhr) {
+                        confirmBulkDeleteBtn.prop('disabled', false).text('Delete Selected');
+                        alert(xhr.responseJSON ? xhr.responseJSON.message : 'An error occurred during deletion');
+                    }
+                });
+            });
+
+            // AJAX Filtering
+            if (filterForm) {
+                $(filterForm).find('select').on('change', function() {
+                    fetchUpdate(window.location.href, true);
+                });
+            }
 
             $(document).on('click', '.quick-transfer-btn', function() {
                 var btn = $(this);

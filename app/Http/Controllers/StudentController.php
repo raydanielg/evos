@@ -257,6 +257,32 @@ class StudentController extends Controller
         return redirect()->route('students.index')->with('success', 'Students imported successfully.');
     }
 
+    public function bulkDelete(Request $request)
+    {
+        $activeSchoolId = $this->activeSchoolId();
+        abort_unless($activeSchoolId, 403);
+
+        $ids = $this->normalizeSelectedIds($request->input('ids', []));
+        if ($ids->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'No students selected.'], 422);
+        }
+
+        DB::transaction(function () use ($activeSchoolId, $ids) {
+            $students = Student::where('school_id', $activeSchoolId)
+                ->whereIn('id', $ids)
+                ->get();
+
+            foreach ($students as $student) {
+                if ($student->photo_path) {
+                    Storage::disk('public')->delete($student->photo_path);
+                }
+                $student->delete();
+            }
+        });
+
+        return response()->json(['success' => true, 'message' => count($ids) . ' students deleted successfully.']);
+    }
+
     public function assignNumbers(Request $request)
     {
         $activeSchool = $this->getActiveSchool();
