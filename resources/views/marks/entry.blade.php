@@ -98,6 +98,45 @@
         </div>
     </div>
 
+    @if($examId && $classId)
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <div class="card shadow-sm border-0" style="border-radius: 8px; background-color: #f8f9fa;">
+                    <div class="card-body py-2 d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center" style="gap: 15px;">
+                            <div class="text-muted small">
+                                <i class="fas fa-file-excel text-success mr-1"></i>
+                                <strong>Marks Template:</strong>
+                            </div>
+                            @if($subjectId)
+                                <a href="{{ route('marks.template', ['exam_id' => $examId, 'class_id' => $classId, 'subject_id' => $subjectId]) }}" class="btn btn-xs btn-outline-success shadow-sm">
+                                    <i class="fas fa-download mr-1"></i> Download Template ({{ $subjects->firstWhere('id', $subjectId)->globalSubject->name }})
+                                </a>
+                            @else
+                                <span class="text-muted small italic">Select a subject to download its specific template.</span>
+                            @endif
+                        </div>
+                        @if($subjectId)
+                        <form action="{{ route('marks.import-preview') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center" style="gap: 10px;">
+                            @csrf
+                            <input type="hidden" name="exam_id" value="{{ $examId }}">
+                            <input type="hidden" name="class_id" value="{{ $classId }}">
+                            <input type="hidden" name="subject_id" value="{{ $subjectId }}">
+                            <div class="custom-file custom-file-sm" style="width: 200px;">
+                                <input type="file" name="file" class="custom-file-input" id="importFile" accept=".csv" required onchange="$(this).next('.custom-file-label').html(this.files[0].name)">
+                                <label class="custom-file-label small" for="importFile">Upload filled CSV</label>
+                            </div>
+                            <button type="submit" class="btn btn-xs btn-success shadow-sm">
+                                <i class="fas fa-upload mr-1"></i> Import
+                            </button>
+                        </form>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if(!$examId)
         <div class="alert shadow-sm text-white" style="background-color: #17a2b8; border-radius: 8px;">
             <i class="fas fa-info-circle mr-2"></i> Select an exam to start entering marks.
@@ -115,37 +154,8 @@
                 <input type="hidden" name="user_subject_id" value="{{ $subjectId }}">
             @endif
 
-            @if($subjectId)
-                <div class="row mb-3">
-                    <div class="col-md-12">
-                        <div class="card shadow-sm border-0" style="border-radius: 8px; background-color: #f8f9fa;">
-                            <div class="card-body py-3 d-flex justify-content-between align-items-center">
-                                <div class="d-flex align-items-center" style="gap: 15px;">
-                                    <div class="text-muted">
-                                        <i class="fas fa-file-excel fa-2x text-success mr-2"></i>
-                                        <strong>Excel Import:</strong> Download template, fill scores, and upload back.
-                                    </div>
-                                    <a href="{{ route('marks.template', ['exam_id' => $examId, 'class_id' => $classId, 'subject_id' => $subjectId]) }}" class="btn btn-sm btn-outline-success shadow-sm" style="border-radius: 6px;">
-                                        <i class="fas fa-download mr-1"></i> Download Template
-                                    </a>
-                                </div>
-                                <form action="{{ route('marks.import-preview') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center" style="gap: 10px;">
-                                    @csrf
-                                    <input type="hidden" name="exam_id" value="{{ $examId }}">
-                                    <input type="hidden" name="class_id" value="{{ $classId }}">
-                                    <input type="hidden" name="subject_id" value="{{ $subjectId }}">
-                                    <div class="custom-file" style="width: 250px;">
-                                        <input type="file" name="file" class="custom-file-input custom-file-input-sm" id="importFile" accept=".csv" required onchange="$(this).next('.custom-file-label').html(this.files[0].name)">
-                                        <label class="custom-file-label custom-file-label-sm" for="importFile">Choose CSV</label>
-                                    </div>
-                                    <button type="submit" class="btn btn-sm btn-success shadow-sm" style="border-radius: 6px;">
-                                        <i class="fas fa-upload mr-1"></i> Import Marks
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            @if($subjectId && false) 
+                {{-- Removed old import section from here --}}
             @endif
 
             <div class="card shadow-sm border-0" style="border-radius: 8px;">
@@ -387,6 +397,82 @@ $(function() {
 
     applyLockUI(isLockedInitially);
 
+    // LIVE SYNC LOGIC
+    let lastSyncTime = "{{ now()->toDateTimeString() }}";
+    function pollLiveUpdates() {
+        if ($('#lockPinBtn').hasClass('btn-danger')) return; // Don't poll if locked
+
+        $.ajax({
+            url: "{{ route('marks.live-updates') }}",
+            method: "GET",
+            data: {
+                exam_id: "{{ $examId }}",
+                class_id: "{{ $classId }}",
+                last_sync: lastSyncTime
+            },
+            success: function(data) {
+                if (data.success) {
+                    lastSyncTime = data.server_time;
+                    
+                    // Update marks from other users
+                    if (Object.keys(data.marks).length > 0) {
+                        for (let sId in data.marks) {
+                            for (let subId in data.marks[sId]) {
+                                const input = $(`input[data-student-id="${sId}"][data-subject-id="${subId}"]`);
+                                const newVal = data.marks[sId][subId];
+                                
+                                if (input.length && !input.is(':focus') && input.val() != newVal) {
+                                    input.val(newVal).addClass('border-info');
+                                    setTimeout(() => input.removeClass('border-info'), 2000);
+                                }
+                            }
+                        }
+                    }
+
+                    // Update positions and results if shifted
+                    if (data.results) {
+                        const trs = $('.mark-input, .mark-input-cell').closest('tr');
+                        trs.each(function() {
+                            const tr = $(this);
+                            const sId = tr.find('.mark-input, .mark-input-cell').first().data('student-id');
+                            if (data.results[sId]) {
+                                const res = data.results[sId];
+                                updateLiveUI(tr, res);
+                            }
+                        });
+                    }
+                }
+            },
+            complete: function() {
+                // Poll every 5 seconds
+                setTimeout(pollLiveUpdates, 5000);
+            }
+        });
+    }
+
+    if ("{{ $examId }}" && "{{ $classId }}") {
+        pollLiveUpdates();
+    }
+
+    function updateLiveUI(tr, res) {
+        const updateWithFade = (tr, selector, newVal) => {
+            const el = tr.find(selector);
+            if (el.length && el.text() !== String(newVal)) {
+                el.fadeOut(200, function() {
+                    $(this).text(newVal).fadeIn(200).addClass('text-primary');
+                    setTimeout(() => $(this).removeClass('text-primary'), 2000);
+                });
+            }
+        };
+
+        updateWithFade(tr, '.total-val', res.total_marks);
+        updateWithFade(tr, '.avg-val', res.is_complete ? res.average : 'INC');
+        updateWithFade(tr, '.grade-val', res.is_complete ? res.grade : 'INC');
+        updateWithFade(tr, '.points-val', res.is_complete ? res.total_points : 'INC');
+        updateWithFade(tr, '.division-val', res.is_complete ? res.division : 'INC');
+        updateWithFade(tr, '.position-val', res.is_complete ? res.position : '-');
+    }
+
     lockPinBtn.on('click', function() {
         const isCurrentlyLocked = lockPinBtn.hasClass('btn-danger');
         if (isCurrentlyLocked) {
@@ -494,28 +580,13 @@ $(function() {
                 if (data.results) {
                     const trs = $('.mark-input, .mark-input-cell').closest('tr');
                     
-                    const updateWithFade = (tr, selector, newVal) => {
-                        const el = tr.find(selector);
-                        if (el.length && el.text() !== String(newVal)) {
-                            el.fadeOut(200, function() {
-                                $(this).text(newVal).fadeIn(200).addClass('text-primary');
-                                setTimeout(() => $(this).removeClass('text-primary'), 2000);
-                            });
-                        }
-                    };
-
                     // Update EVERY row in the visible table because positions might have shifted for anyone
                     trs.each(function() {
                         const tr = $(this);
                         const sId = tr.find('.mark-input, .mark-input-cell').first().data('student-id');
                         if (data.results[sId]) {
                             const res = data.results[sId];
-                            updateWithFade(tr, '.total-val', res.total_marks);
-                            updateWithFade(tr, '.avg-val', res.is_complete ? res.average : 'INC');
-                            updateWithFade(tr, '.grade-val', res.is_complete ? res.grade : 'INC');
-                            updateWithFade(tr, '.points-val', res.is_complete ? res.total_points : 'INC');
-                            updateWithFade(tr, '.division-val', res.is_complete ? res.division : 'INC');
-                            updateWithFade(tr, '.position-val', res.is_complete ? res.position : '-');
+                            updateLiveUI(tr, res);
                         }
                     });
                 }

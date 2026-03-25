@@ -39,6 +39,9 @@
                         </div>
                         <div>
                             <a href="{{ route('marks.entry', ['exam_id' => $exam->id, 'class_id' => $schoolClass->id, 'subject_id' => $subject->id]) }}" class="btn btn-light mr-2" id="backBtn">Back</a>
+                            <button type="button" class="btn btn-danger mr-2" id="clearBtn">
+                                <i class="fas fa-trash-alt mr-1"></i> Clear Preview
+                            </button>
                             <button type="button" class="btn btn-success" id="confirmBtn">
                                 <i class="fas fa-check mr-2"></i> Confirm Import
                             </button>
@@ -96,7 +99,14 @@
     <script>
         $(function () {
             const confirmBtn = $('#confirmBtn, #confirmBtn2');
+            const clearBtn = $('#clearBtn');
             const backBtn = $('#backBtn');
+
+            clearBtn.on('click', function() {
+                if (confirm('Are you sure you want to clear this preview and go back?')) {
+                    window.location.href = "{{ route('marks.entry', ['exam_id' => $exam->id, 'class_id' => $schoolClass->id, 'subject_id' => $subject->id]) }}";
+                }
+            });
             const progressContainer = $('#import-progress-container');
             const progressBar = $('#import-progress-bar');
             const percentageText = $('#import-percentage');

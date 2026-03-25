@@ -226,6 +226,52 @@ class MarkController extends Controller
         ]);
     }
 
+    public function getLiveUpdates(Request $request)
+    {
+        $validated = $request->validate([
+            'exam_id' => 'required|exists:exams,id',
+            'class_id' => 'required|exists:school_classes,id',
+            'last_sync' => 'required'
+        ]);
+
+        $lastSync = $validated['last_sync'];
+
+        // Get marks updated since last sync
+        $marks = Mark::where('exam_id', $validated['exam_id'])
+            ->where('class_id', $validated['class_id'])
+            ->where('updated_at', '>', $lastSync)
+            ->get()
+            ->groupBy('student_id')
+            ->map(function ($studentMarks) {
+                return $studentMarks->mapWithKeys(function ($m) {
+                    return [$m->user_subject_id => (int)$m->score];
+                });
+            });
+
+        // Get results for all students (to sync positions)
+        $results = ExamResult::where('exam_id', $validated['exam_id'])
+            ->where('class_id', $validated['class_id'])
+            ->get()
+            ->mapWithKeys(function ($res) {
+                return [$res->student_id => [
+                    'total_marks' => (int)$res->total_marks,
+                    'average' => (int)$res->average,
+                    'total_points' => (int)$res->total_points,
+                    'division' => $res->division,
+                    'is_complete' => (bool)$res->is_complete,
+                    'position' => $res->position,
+                    'grade' => $this->calculateGradeFromAvg($res->average)
+                ]];
+            });
+
+        return response()->json([
+            'success' => true,
+            'marks' => $marks,
+            'results' => $results,
+            'server_time' => now()->toDateTimeString()
+        ]);
+    }
+
     public function results(Request $request)
     {
         $schoolId = $this->getActiveSchoolId();
