@@ -77,7 +77,7 @@
                                                     </select>
                                                 </td>
                                                 <td>
-                                                    <input type="text" class="form-control" name="rows[{{ $loop->index }}][parent_phone]" value="{{ $r['parent_phone'] }}" required>
+                                                    <input type="text" class="form-control" name="rows[{{ $loop->index }}][parent_phone]" value="{{ $r['parent_phone'] }}">
                                                 </td>
                                                 <td>
                                                     @if(!empty($r['_error'] ?? null))

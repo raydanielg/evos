@@ -117,7 +117,7 @@ class StudentController extends Controller
                 'middle_name' => 'nullable|string|max:100',
                 'last_name' => 'required|string|max:100',
                 'sex' => 'required|in:Male,Female',
-                'parent_phone' => 'required|string|max:30',
+                'parent_phone' => 'nullable|string|max:30',
             ]);
 
             if ($v->fails()) {
@@ -198,7 +198,7 @@ class StudentController extends Controller
                 'middle_name' => 'nullable|string|max:100',
                 'last_name' => 'required|string|max:100',
                 'sex' => 'required|in:Male,Female',
-                'parent_phone' => 'required|string|max:30',
+                'parent_phone' => 'nullable|string|max:30',
             ]);
 
             if ($v->fails()) {
@@ -724,7 +724,7 @@ class StudentController extends Controller
             'middle_name' => 'nullable|string|max:100',
             'last_name' => 'required|string|max:100',
             'sex' => 'required|in:Male,Female',
-            'parent_phone' => 'required|string|max:30',
+            'parent_phone' => 'nullable|string|max:30',
             'photo' => 'nullable|image|max:2048',
         ]);
 
