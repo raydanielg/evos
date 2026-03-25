@@ -489,6 +489,36 @@ $(function() {
                 if (container.length) {
                     container.append('<i class="fas fa-check text-success position-absolute" style="right: 2px; top: 8px; font-size: 8px;"></i>');
                 }
+                
+                // Update results if data contains them
+                if (data.results) {
+                    const trs = $('.mark-input, .mark-input-cell').closest('tr');
+                    
+                    const updateWithFade = (tr, selector, newVal) => {
+                        const el = tr.find(selector);
+                        if (el.length && el.text() !== String(newVal)) {
+                            el.fadeOut(200, function() {
+                                $(this).text(newVal).fadeIn(200).addClass('text-primary');
+                                setTimeout(() => $(this).removeClass('text-primary'), 2000);
+                            });
+                        }
+                    };
+
+                    // Update EVERY row in the visible table because positions might have shifted for anyone
+                    trs.each(function() {
+                        const tr = $(this);
+                        const sId = tr.find('.mark-input, .mark-input-cell').first().data('student-id');
+                        if (data.results[sId]) {
+                            const res = data.results[sId];
+                            updateWithFade(tr, '.total-val', res.total_marks);
+                            updateWithFade(tr, '.avg-val', res.is_complete ? res.average : 'INC');
+                            updateWithFade(tr, '.grade-val', res.is_complete ? res.grade : 'INC');
+                            updateWithFade(tr, '.points-val', res.is_complete ? res.total_points : 'INC');
+                            updateWithFade(tr, '.division-val', res.is_complete ? res.division : 'INC');
+                            updateWithFade(tr, '.position-val', res.is_complete ? res.position : '-');
+                        }
+                    });
+                }
             },
             error: function() {
                 inputElement.removeClass('border-warning').addClass('border-danger');

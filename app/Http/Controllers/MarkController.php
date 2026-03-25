@@ -351,90 +351,62 @@ class MarkController extends Controller
                 $q->where('exam_id', $examId);
             }])->get();
 
-        $results = [];
-        foreach ($students as $student) {
-            $marksFound = $student->marks->count();
-            $total = $student->marks->sum('score');
-            $isComplete = ($marksFound >= 7 && $subjectsCount >= 7); // NECTA requires at least 7 subjects
-            $avg = $marksFound > 0 ? $total / $marksFound : 0;
+        DB::transaction(function () use ($students, $examId, $classId, $subjectsCount) {
+            // Sort students to assign positions sequentially (no joint positions)
+            // Priority: Higher Total Marks -> First Name
+            $sortedStudents = $students->sortByDesc(function ($student) {
+                return (float)$student->marks->sum('score');
+            })->sortBy(function($student) {
+                return $student->first_name;
+            }, SORT_NATURAL, false)->values();
 
-            $division = null;
-            $points = 0;
+            $rank = 1;
+            foreach ($sortedStudents as $student) {
+                $marksFound = $student->marks->count();
+                $total = (int)$student->marks->sum('score');
+                $isComplete = ($marksFound >= 7 && $subjectsCount >= 7);
+                $avg = $marksFound > 0 ? (int)round($total / $marksFound) : 0;
 
-            if ($marksFound > 0) {
-                // Get all subject scores and sort them to find best 7
+                // Points calculation
                 $scores = $student->marks->pluck('score')->toArray();
-                rsort($scores); // Best scores first
-                
-                // Get points for each subject (simplified NECTA points)
-                $allPoints = array_map(function($s) {
-                    if ($s >= 75) return 1; // A
-                    elseif ($s >= 65) return 2; // B
-                    elseif ($s >= 45) return 3; // C
-                    elseif ($s >= 30) return 4; // D
-                    else return 5; // F
+                rsort($scores);
+                $allPoints = array_map(function ($s) {
+                    if ($s >= 75) return 1;
+                    elseif ($s >= 65) return 2;
+                    elseif ($s >= 45) return 3;
+                    elseif ($s >= 30) return 4;
+                    else return 5;
                 }, $scores);
-
-                // Best 7 subjects points
                 $best7Points = array_slice($allPoints, 0, 7);
                 $points = array_sum($best7Points);
 
-                $total = (int) $total;
-                $avg = (int) round($avg);
-
-                if ($marksFound < 7) {
-                    $division = 'INC'; // Incomplete if less than 7 subjects
-                } else {
+                $division = '-';
+                if ($marksFound >= 7) {
                     if ($points <= 17) $division = 'I';
                     elseif ($points <= 21) $division = 'II';
                     elseif ($points <= 25) $division = 'III';
                     elseif ($points <= 33) $division = 'IV';
                     else $division = '0';
+                } elseif ($marksFound > 0) {
+                    $division = 'INC';
                 }
-            }
 
-            $results[] = [
-                'exam_id' => $examId,
-                'student_id' => $student->id,
-                'class_id' => $classId,
-                'total_marks' => $total,
-                'average' => $avg,
-                'total_points' => $points,
-                'division' => $division,
-                'is_complete' => ($marksFound >= 7),
-            ];
-        }
-
-        // Update database and calculate positions
-        DB::transaction(function () use ($results, $examId, $classId) {
-            foreach ($results as $res) {
                 ExamResult::updateOrCreate(
-                    ['exam_id' => $examId, 'student_id' => $res['student_id']],
-                    $res
+                    [
+                        'exam_id' => $examId,
+                        'student_id' => $student->id
+                    ],
+                    [
+                        'school_id' => $student->school_id,
+                        'class_id' => $classId,
+                        'total_marks' => $total,
+                        'average' => $avg,
+                        'total_points' => $points,
+                        'division' => $division,
+                        'is_complete' => ($marksFound >= 7),
+                        'position' => ($marksFound >= 7) ? $rank++ : null,
+                    ]
                 );
-            }
-
-            // Calculate positions based on total_marks for complete results
-            $rankings = ExamResult::where('exam_id', $examId)
-                ->where('class_id', $classId)
-                ->where('is_complete', true)
-                ->orderByDesc('total_marks')
-                ->get();
-
-            $rank = 1;
-            $prevTotal = null;
-            $sameRankCount = 0;
-
-            foreach ($rankings as $index => $r) {
-                if ($prevTotal !== null && $r->total_marks < $prevTotal) {
-                    $rank += $sameRankCount + 1;
-                    $sameRankCount = 0;
-                } elseif ($prevTotal !== null && $r->total_marks == $prevTotal) {
-                    $sameRankCount++;
-                }
-
-                $r->update(['position' => $rank]);
-                $prevTotal = $r->total_marks;
             }
         });
     }
@@ -523,14 +495,42 @@ class MarkController extends Controller
             ],
             [
                 'class_id' => $validated['class_id'],
-                'score' => $validated['score'],
+                'score' => (int)$validated['score'],
             ]
         );
 
+        // Recalculate results for the entire class to update positions
+        $this->recalculateResults($validated['exam_id'], $validated['class_id']);
+
+        // Fetch updated results for all students in the class to return to UI
+        $results = ExamResult::where('exam_id', $validated['exam_id'])
+            ->where('class_id', $validated['class_id'])
+            ->get()
+            ->mapWithKeys(function ($res) {
+                return [$res->student_id => [
+                    'total_marks' => (int)$res->total_marks,
+                    'average' => (int)$res->average,
+                    'total_points' => (int)$res->total_points,
+                    'division' => $res->division,
+                    'is_complete' => (bool)$res->is_complete,
+                    'position' => $res->position,
+                    'grade' => $this->calculateGradeFromAvg($res->average)
+                ]];
+            });
+
         return response()->json([
             'success' => true,
-            'message' => 'Mark saved successfully.',
-            'score' => $mark->score
+            'message' => 'Mark saved and positions updated.',
+            'results' => $results
         ]);
+    }
+
+    private function calculateGradeFromAvg($avg)
+    {
+        if ($avg >= 75) return 'A';
+        if ($avg >= 65) return 'B';
+        if ($avg >= 45) return 'C';
+        if ($avg >= 30) return 'D';
+        return 'F';
     }
 }
