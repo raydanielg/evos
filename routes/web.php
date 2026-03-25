@@ -60,6 +60,9 @@ Route::middleware('auth')->group(function () {
     Route::post('marks-store', [App\Http\Controllers\MarkController::class, 'store'])->name('marks.store');
     Route::post('marks-store-single', [App\Http\Controllers\MarkController::class, 'storeSingle'])->name('marks.store-single');
     Route::post('marks-toggle-lock', [App\Http\Controllers\MarkController::class, 'toggleLock'])->name('marks.toggle-lock');
+    Route::get('marks-template', [App\Http\Controllers\MarkController::class, 'downloadMarksTemplate'])->name('marks.template');
+    Route::post('marks-import-preview', [App\Http\Controllers\MarkController::class, 'importPreview'])->name('marks.import-preview');
+    Route::post('marks-import-confirm', [App\Http\Controllers\MarkController::class, 'importConfirm'])->name('marks.import-confirm');
 
     // Results
     Route::get('results', [App\Http\Controllers\MarkController::class, 'results'])->name('results.index');

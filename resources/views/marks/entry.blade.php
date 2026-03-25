@@ -115,6 +115,39 @@
                 <input type="hidden" name="user_subject_id" value="{{ $subjectId }}">
             @endif
 
+            @if($subjectId)
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <div class="card shadow-sm border-0" style="border-radius: 8px; background-color: #f8f9fa;">
+                            <div class="card-body py-3 d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center" style="gap: 15px;">
+                                    <div class="text-muted">
+                                        <i class="fas fa-file-excel fa-2x text-success mr-2"></i>
+                                        <strong>Excel Import:</strong> Download template, fill scores, and upload back.
+                                    </div>
+                                    <a href="{{ route('marks.template', ['exam_id' => $examId, 'class_id' => $classId, 'subject_id' => $subjectId]) }}" class="btn btn-sm btn-outline-success shadow-sm" style="border-radius: 6px;">
+                                        <i class="fas fa-download mr-1"></i> Download Template
+                                    </a>
+                                </div>
+                                <form action="{{ route('marks.import-preview') }}" method="POST" enctype="multipart/form-data" class="d-flex align-items-center" style="gap: 10px;">
+                                    @csrf
+                                    <input type="hidden" name="exam_id" value="{{ $examId }}">
+                                    <input type="hidden" name="class_id" value="{{ $classId }}">
+                                    <input type="hidden" name="subject_id" value="{{ $subjectId }}">
+                                    <div class="custom-file" style="width: 250px;">
+                                        <input type="file" name="file" class="custom-file-input custom-file-input-sm" id="importFile" accept=".csv" required onchange="$(this).next('.custom-file-label').html(this.files[0].name)">
+                                        <label class="custom-file-label custom-file-label-sm" for="importFile">Choose CSV</label>
+                                    </div>
+                                    <button type="submit" class="btn btn-sm btn-success shadow-sm" style="border-radius: 6px;">
+                                        <i class="fas fa-upload mr-1"></i> Import Marks
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             <div class="card shadow-sm border-0" style="border-radius: 8px;">
                 <div class="card-header bg-white border-0 pt-4 px-4">
                     <div class="d-flex justify-content-between align-items-center">
@@ -230,8 +263,8 @@
                                             <td class="mark-col-marks">
                                                 <input type="number" name="marks[{{ $student->id }}]" 
                                                        class="form-control form-control-sm text-center shadow-none mark-input" 
-                                                       step="0.01" min="0" max="100"
-                                                       value="{{ $student->marks->first()?->score }}"
+                                                       step="1" min="0" max="100"
+                                                       value="{{ $student->marks->first()?->score ? (int)$student->marks->first()?->score : $student->marks->first()?->score }}"
                                                        data-student-id="{{ $student->id }}"
                                                        data-subject-id="{{ $subjectId }}"
                                                        style="border-radius: 4px; font-weight: bold; border: 1px solid #ced4da;">
@@ -256,8 +289,8 @@
                                                     <div class="position-relative">
                                                         <input type="number" name="marks[{{ $student->id }}][{{ $sub->id }}]" 
                                                                class="form-control form-control-sm text-center mark-input-cell p-0" 
-                                                               step="0.01" min="0" max="100"
-                                                               value="{{ $score }}"
+                                                               step="1" min="0" max="100"
+                                                               value="{{ $score !== null ? (int)$score : null }}"
                                                                data-student-id="{{ $student->id }}"
                                                                data-subject-id="{{ $sub->id }}"
                                                                style="border-radius: 3px; font-size: 12px; height: 28px;">
@@ -268,10 +301,10 @@
                                                 </td>
                                             @endforeach
                                             <td class="text-center font-weight-bold mark-col-total" style="background-color: #f8f9fa; font-size: 13px;">
-                                                <span class="total-val">{{ $hasAny ? number_format($total, 2) : '-' }}</span>
+                                                <span class="total-val">{{ $hasAny ? Math::round($total) : '-' }}</span>
                                             </td>
                                             <td class="text-center mark-col-avg" style="background-color: #f8f9fa; font-size: 13px;">
-                                                <span class="avg-val">{{ $hasAny ? ($isComplete ? number_format($avg, 2) : 'INC') : '-' }}</span>
+                                                <span class="avg-val">{{ $hasAny ? ($isComplete ? Math::round($avg) : 'INC') : '-' }}</span>
                                             </td>
                                             <td class="text-center mark-col-grade" style="background-color: #f8f9fa;">
                                                 @php
@@ -413,7 +446,7 @@ $(function() {
     autoSaveToggle.prop('checked', isAutoSaveOn).trigger('change');
 
     // AJAX Save Function
-    function saveMark(studentId, subjectId, score, inputElement) {
+    function saveMark(studentId, subjectId, score, inputElement, forceAjax = false) {
         const container = inputElement.closest('.position-relative');
         container.find('.fa-check').remove();
         
@@ -436,7 +469,7 @@ $(function() {
 
         updateLiveCalculations(inputElement.closest('tr'));
 
-        if (!autoSaveToggle.is(':checked')) return;
+        if (!autoSaveToggle.is(':checked') && !forceAjax) return;
 
         inputElement.addClass('border-warning');
 
@@ -497,7 +530,7 @@ $(function() {
             return;
         }
 
-        totalSpan.text(total.toFixed(2));
+        totalSpan.text(Math.round(total));
 
         if (count < 7) {
             avgSpan.text('INC');
@@ -507,7 +540,7 @@ $(function() {
             posSpan.text('-');
         } else {
             const avg = total / count;
-            avgSpan.text(avg.toFixed(2));
+            avgSpan.text(Math.round(avg));
 
             // Calculate points for all subjects and take best 7
             let allPoints = [];
@@ -597,44 +630,50 @@ $(function() {
         }
     });
 
-    // Single Mark Input Event (for Single Subject view)
     $('.mark-input').on('change', function() {
-        const studentId = $(this).data('student-id');
-        const subjectId = $(this).data('subject-id');
-        const raw = $(this).val();
+        const input = $(this);
+        const studentId = input.data('student-id');
+        const subjectId = input.data('subject-id');
+        const raw = input.val();
+        
         if (raw !== '') {
             const num = parseFloat(raw);
             if (!isNaN(num) && (num < 0 || num > 100)) {
-                $(this).css('background-color', '#fff5f5').addClass('border-danger').removeClass('border-success');
-                if (!$(this).data('range-alert-shown')) {
+                input.css('background-color', '#fff5f5').addClass('border-danger').removeClass('border-success');
+                if (!input.data('range-alert-shown')) {
                     alert('Marks must be between 0 and 100.');
-                    $(this).data('range-alert-shown', true);
+                    input.data('range-alert-shown', true);
                 }
                 return;
             }
         }
-        $(this).removeData('range-alert-shown');
-        saveMark(studentId, subjectId, raw, $(this));
+        input.removeData('range-alert-shown');
+        
+        // Always save via AJAX regardless of AutoSave toggle
+        saveMark(studentId, subjectId, raw, input, true);
     });
 
-    // Matrix Mark Input Event (for All Subjects view)
     $('.mark-input-cell').on('change', function() {
-        const studentId = $(this).data('student-id');
-        const subjectId = $(this).data('subject-id');
-        const raw = $(this).val();
+        const input = $(this);
+        const studentId = input.data('student-id');
+        const subjectId = input.data('subject-id');
+        const raw = input.val();
+        
         if (raw !== '') {
             const num = parseFloat(raw);
             if (!isNaN(num) && (num < 0 || num > 100)) {
-                $(this).css('background-color', '#fff5f5').addClass('border-danger').removeClass('border-success');
-                if (!$(this).data('range-alert-shown')) {
+                input.css('background-color', '#fff5f5').addClass('border-danger').removeClass('border-success');
+                if (!input.data('range-alert-shown')) {
                     alert('Marks must be between 0 and 100.');
-                    $(this).data('range-alert-shown', true);
+                    input.data('range-alert-shown', true);
                 }
                 return;
             }
         }
-        $(this).removeData('range-alert-shown');
-        saveMark(studentId, subjectId, raw, $(this));
+        input.removeData('range-alert-shown');
+        
+        // Always save via AJAX regardless of AutoSave toggle
+        saveMark(studentId, subjectId, raw, input, true);
     });
 
     // Column Toggle Logic

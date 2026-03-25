@@ -86,6 +86,146 @@ class MarkController extends Controller
         return view('marks.entry', compact('exams', 'classes', 'subjects', 'students', 'examId', 'classId', 'subjectId', 'examLock'));
     }
 
+    public function downloadMarksTemplate(Request $request)
+    {
+        $schoolId = $this->getActiveSchoolId();
+        abort_unless($schoolId, 403);
+
+        $examId = $request->integer('exam_id');
+        $classId = $request->integer('class_id');
+        $subjectId = $request->integer('subject_id');
+
+        abort_unless($examId && $classId && $subjectId, 422, 'Missing required parameters.');
+
+        $exam = Exam::findOrFail($examId);
+        $schoolClass = SchoolClass::findOrFail($classId);
+        $userSubject = UserSubject::with('globalSubject')->findOrFail($subjectId);
+
+        $students = Student::where('school_id', $schoolId)
+            ->where('class_id', $classId)
+            ->orderByRaw("CASE WHEN sex = 'Female' THEN 0 ELSE 1 END")
+            ->orderBy('first_name')
+            ->orderBy('middle_name')
+            ->orderBy('last_name')
+            ->get();
+
+        $filename = "marks_template_{$schoolClass->name}_{$userSubject->globalSubject->name}.csv";
+
+        return response()->streamDownload(function () use ($students) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Index Number', 'Full Name', 'Score']);
+            foreach ($students as $student) {
+                fputcsv($out, [
+                    $student->registration_number,
+                    $student->full_name,
+                    ''
+                ]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function importPreview(Request $request)
+    {
+        $validated = $request->validate([
+            'exam_id' => 'required|integer|exists:exams,id',
+            'class_id' => 'required|integer|exists:school_classes,id',
+            'subject_id' => 'required|integer|exists:user_subjects,id',
+            'file' => 'required|file',
+        ]);
+
+        $path = $request->file('file')->getRealPath();
+        $handle = fopen($path, 'r');
+        abort_unless($handle !== false, 422);
+
+        $header = fgetcsv($handle);
+        $rows = [];
+        $errors = [];
+
+        $rowNo = 1;
+        while (($data = fgetcsv($handle)) !== false) {
+            $rowNo++;
+            if (empty($data) || (count($data) === 1 && trim((string)$data[0]) === '')) continue;
+
+            $indexNo = trim((string)($data[0] ?? ''));
+            $fullName = trim((string)($data[1] ?? ''));
+            $score = trim((string)($data[2] ?? ''));
+
+            $student = null;
+            if ($indexNo) {
+                $student = Student::where('school_id', $this->getActiveSchoolId())
+                    ->where('registration_number', $indexNo)
+                    ->first();
+            }
+
+            if (!$student && $fullName) {
+                // Try matching by name if index no fails
+                $students = Student::where('school_id', $this->getActiveSchoolId())
+                    ->where('class_id', $validated['class_id'])
+                    ->get();
+                
+                foreach ($students as $s) {
+                    if (strcasecmp($s->full_name, $fullName) === 0) {
+                        $student = $s;
+                        break;
+                    }
+                }
+            }
+
+            $rows[] = [
+                'student_id' => $student?->id,
+                'index_no' => $indexNo,
+                'full_name' => $fullName ?: ($student?->full_name ?? 'Unknown'),
+                'score' => $score,
+                'is_valid' => $student !== null && is_numeric($score) && $score >= 0 && $score <= 100,
+                'error' => $student === null ? 'Student not found' : (!is_numeric($score) ? 'Invalid score' : ($score < 0 || $score > 100 ? 'Score out of range' : null))
+            ];
+        }
+        fclose($handle);
+
+        $exam = Exam::findOrFail($validated['exam_id']);
+        $schoolClass = SchoolClass::findOrFail($validated['class_id']);
+        $subject = UserSubject::with('globalSubject')->findOrFail($validated['subject_id']);
+
+        return view('marks.import_preview', compact('rows', 'exam', 'schoolClass', 'subject'));
+    }
+
+    public function importConfirm(Request $request)
+    {
+        $validated = $request->validate([
+            'exam_id' => 'required|integer|exists:exams,id',
+            'subject_id' => 'required|integer|exists:user_subjects,id',
+            'class_id' => 'required|integer|exists:school_classes,id',
+            'rows' => 'required|array',
+        ]);
+
+        $count = 0;
+        DB::transaction(function () use ($validated, &$count) {
+            foreach ($validated['rows'] as $r) {
+                if (empty($r['student_id']) || !isset($r['score']) || $r['score'] === '') continue;
+
+                Mark::updateOrCreate(
+                    [
+                        'exam_id' => $validated['exam_id'],
+                        'student_id' => $r['student_id'],
+                        'user_subject_id' => $validated['subject_id'],
+                    ],
+                    [
+                        'class_id' => $validated['class_id'],
+                        'score' => (int)$r['score'],
+                    ]
+                );
+                $count++;
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => "Successfully imported {$count} marks.",
+            'count' => $count
+        ]);
+    }
+
     public function results(Request $request)
     {
         $schoolId = $this->getActiveSchoolId();
@@ -238,6 +378,9 @@ class MarkController extends Controller
                 // Best 7 subjects points
                 $best7Points = array_slice($allPoints, 0, 7);
                 $points = array_sum($best7Points);
+
+                $total = (int) $total;
+                $avg = (int) round($avg);
 
                 if ($marksFound < 7) {
                     $division = 'INC'; // Incomplete if less than 7 subjects
